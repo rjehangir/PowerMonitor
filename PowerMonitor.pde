@@ -3,6 +3,7 @@
 
 #define OUTPUT_TRANSFER 1
 #define OUTPUT_READABLE 2
+#define OUTPUT_NONE     3
 
 #define OUTPUT_TYPE OUTPUT_TRANSFER
 
@@ -68,48 +69,54 @@ void measureVoltage(float &voltage,float dt,uint8_t anPin) {
   const static float k = 0.00305761;
   const static float tau = 0.25;
   
-  static bool initialized = false;
-  if ( !initialized ) {
-    initialized = true;
-    voltage = analogRead(anPin)*readVcc()*k;
-  }
-  
   float alpha = dt/(dt+tau);
 
   voltage = voltage*(1-alpha) + analogRead(anPin)*readVcc()*k*alpha;
 }
 
+void initVoltage(float &voltage,uint8_t anPin) {
+  const static float k = 0.00305761;
+
+  voltage = analogRead(anPin)*readVcc()*k;
+}
+
 /** This function measure the current supplied from the power source to the speed 
- * controller using a ACS715 current sensor chip. The output of this current 
- * sensor is 0.133 V/A. Like specified above, the Atmega328p has a 10 bit ADC and
+ * controller using a ACS714 current sensor chip. The output of this current 
+ * sensor is 0.066 V/A. Like specified above, the Atmega328p has a 10 bit ADC and
  * 5.0 V reference voltage so that it has 0.004883 V/step. Combining this with the
  * current sensor relation provides:
  * 
- * Vcc/1023 V/step x 1/0.133 A/V = Vcc*0.0073498 A/step
+ * Vcc/1023 V/step x 1/0.066 A/V = Vcc*0.014811 A/step
  * 
- * The sensor measures 0-30A and is biased at 0.5 V.
+ * The sensor measures +/-30A and is biased at 2.5 V.
  * 
  * A low pass filter is also used on the current measurement to smooth it out
  * slightly. The low pass filter has a time constant of 0.25 s.
  */
 void measureCurrent(float &current,float dt,uint8_t anPin) {
-  const static float k = 0.0073498;
+  const static float k = 0.014811;
   const static float tau = 0.25;
-  const static int16_t center = 102; // equivalent to 0.5 V
-  
-  static bool initialized = false;
-  if ( !initialized ) {
-    initialized = true;
-    current = (analogRead(anPin)-center)*readVcc()*k;
-  }
+  const static int16_t center = 510; // equivalent to 0.5 V
   
   float alpha = dt/(dt+tau);
   
   current = current*(1-alpha) + (analogRead(anPin)-center)*readVcc()*k*alpha;
 }
 
+void initCurrent(float &current,uint8_t anPin) {
+  const static float k = 0.014811;
+  const static int16_t center = 510; // equivalent to 0.5 V
+
+  current = (analogRead(anPin)-center)*readVcc()*k;
+}
+
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(19200);
+
+  for (uint8_t i = 0 ; i < 4 ; i++) {
+    initVoltage(data.voltage[i],vPins[i]);
+    initCurrent(data.current[i],cPins[i]);
+  }
 
   transfer.setStream(&Serial);
 }
@@ -154,14 +161,16 @@ void loop() {
         Serial.write(27);
         Serial.print("[H");     // cursor to home command
         for (uint8_t i = 0 ; i < 4 ; i++) {
-          Serial.print(i);Serial.print(": ");
-          Serial.print(data.voltage[i]); Serial.print(" V\t");
-				  Serial.print(data.current[i]); Serial.print(" A\t");
-				  Serial.print(data.current[i]*data.voltage[i]); Serial.print(" W");
+          Serial.print(i,DEC);Serial.print(": ");
+          Serial.print(data.voltage[i],2); Serial.print(" V\t");
+				  Serial.print(data.current[i],2); Serial.print(" A\t\t");
+				  Serial.print(data.current[i]*data.voltage[i],2); Serial.print(" W");
 				  Serial.println("");
         }
 			}
 			break;
+    case OUTPUT_NONE:
+      break;
 		default:
 			Serial.println("Must define OUTPUT_TYPE.");    
     } 
